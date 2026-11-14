@@ -1,0 +1,123 @@
+/* ==========================================================================
+   HOME — floating tiles around the giant wordmark
+   The 3D scene is plain DOM with CSS 3D transforms (see home.js): a fixed
+   stage with perspective, a "world" that turns with the pointer, and one
+   link per tile.
+   ========================================================================== */
+
+html:has(body[data-page='home']),
+body[data-page='home'] {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.home-sphere {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  perspective: var(--home-p, 1086px);
+  perspective-origin: 50% 50%;
+  touch-action: pinch-zoom;          /* finger drags steer the camera instead of panning the page */
+}
+
+.home-world,
+.home-layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.home-layer {
+  left: 0;
+  top: 0;
+}
+
+.home-tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  transform-origin: 0 0;
+  color: var(--on-accent);
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.home-tile.is-shown {
+  opacity: 1;
+}
+
+.home-tile__media {
+  display: block;
+  width: 100%;
+  background: #ccc;
+  overflow: hidden;
+}
+
+.is-night .home-tile__media {
+  background: #1a1a1a;
+}
+
+.home-tile__media video,
+.home-tile__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.home-tile__label {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
+  background: var(--accent);
+  white-space: pre;
+  letter-spacing: -0.02em;
+}
+
+.home-tile:focus-visible {
+  outline: 3px solid var(--fg);
+  outline-offset: 3px;
+}
+
+/* the wordmark: fixed in the middle, above the tiles and above the menu veil */
+.home-logo {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 999;
+  width: 50vw;
+  color: var(--fg);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  transition: transform 0.5s ease-out;
+}
+
+.home-logo svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  fill: currentColor;
+}
+
+@media (max-width: 959.98px) {
+  .home-logo {
+    width: 88vw;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-logo {
+    transition: none;
+  }
+}

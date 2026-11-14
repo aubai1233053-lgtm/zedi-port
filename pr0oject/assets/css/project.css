@@ -1,0 +1,405 @@
+/* ==========================================================================
+   PROJECT — one film: full-screen player with a thin time line, round
+   accent buttons and an accent title bar; credits list underneath.
+   ========================================================================== */
+
+/* The menu button stays out of the way while the film fills the screen. */
+body[data-page='project'] .z-nav {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.is-past-stage body[data-page='project'] .z-nav,
+.is-menu-open body[data-page='project'] .z-nav,
+body[data-page='project'].is-missing .z-nav {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* -------------------------------------------------------------- stage */
+.project-stage {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #000;
+}
+
+.project-frame {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.project-frame:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.project-frame video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.project-video {
+  z-index: 2;
+}
+
+/* the silent loop that stands in for a poster until the film is started */
+.project-preview {
+  z-index: 3;
+  transition: opacity 0.3s ease;
+}
+
+.project-stage.is-started .project-preview {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* everything that fades away when the pointer rests */
+.project-ui {
+  transition: opacity 0.5s ease, transform 0.4s ease;
+}
+
+.is-idle .project-ui {
+  opacity: 0;
+}
+
+/* ----------------------------------------------------------- time line */
+.project-progress {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.project-stage.is-started .project-progress {
+  opacity: 1;
+}
+
+.project-progress__handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 5rem;
+  padding-left: 0.5rem;
+  color: var(--accent);
+  pointer-events: auto;
+  touch-action: none;
+  will-change: transform;
+}
+
+.project-progress__handle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent);
+}
+
+.project-progress__handle.is-flipped {
+  justify-content: flex-end;
+  margin-left: -5rem;
+  padding: 0 0.5rem 0 0;
+}
+
+.project-progress__handle.is-flipped::before {
+  left: auto;
+  right: 0;
+}
+
+/* ------------------------------------------- badge that follows the pointer */
+.project-badge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform;
+}
+
+.project-stage.is-pointing .project-badge {
+  opacity: 1;
+}
+
+.is-idle .project-stage.is-pointing .project-badge {
+  opacity: 0;
+}
+
+.project-badge svg {
+  position: absolute;
+}
+
+.project-badge .z-icon--pause,
+.project-badge .z-icon--scrub,
+.project-stage.is-playing .project-badge .z-icon--play,
+.project-stage.is-scrubbing .project-badge .z-icon--play,
+.project-stage.is-scrubbing .project-badge .z-icon--pause {
+  display: none;
+}
+
+.project-stage.is-playing .project-badge .z-icon--pause,
+.project-stage.is-scrubbing .project-badge .z-icon--scrub {
+  display: block;
+}
+
+/* touch screens: no pointer to follow, so the badge sits in the middle while paused */
+.is-touch .project-badge {
+  left: 50%;
+  top: 50%;
+  opacity: 1;
+  transform: none !important;
+  transition: opacity 0.3s ease;
+}
+
+.is-touch .project-stage.is-playing .project-badge {
+  opacity: 0;
+}
+
+/* ------------------------------------------------------- round buttons */
+.project-btn {
+  position: absolute;
+  top: 1.2rem;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.project-btn:hover {
+  transform: scale(1.04);
+}
+
+.project-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.project-close {
+  right: 1.2rem;
+}
+
+.project-sound {
+  right: 5.2rem;
+}
+
+.project-waves {
+  display: flex;
+  justify-content: space-between;
+  width: 12px;
+}
+
+.project-waves i {
+  display: block;
+  width: 2px;
+  height: 9px;
+  border-radius: 8px;
+  background: currentColor;
+  transform: scaleY(0.4);
+  animation: 1.2s ease-in-out infinite;
+}
+
+.project-sound.is-on .project-waves i:nth-child(1),
+.project-sound.is-on .project-waves i:nth-child(4) {
+  animation-name: project-wave-quiet;
+}
+
+.project-sound.is-on .project-waves i:nth-child(2) {
+  animation-name: project-wave-normal;
+}
+
+.project-sound.is-on .project-waves i:nth-child(3) {
+  animation-name: project-wave-loud;
+}
+
+@keyframes project-wave-quiet {
+  25% { transform: scaleY(0.6); }
+  50% { transform: scaleY(0.4); }
+  75% { transform: scaleY(0.8); }
+}
+
+@keyframes project-wave-normal {
+  25% { transform: scaleY(1); }
+  50% { transform: scaleY(0.4); }
+  75% { transform: scaleY(0.6); }
+}
+
+@keyframes project-wave-loud {
+  25% { transform: scaleY(1); }
+  50% { transform: scaleY(0.4); }
+  75% { transform: scaleY(1.2); }
+}
+
+/* ------------------------------------------------------------- logo */
+.project-logo {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  z-index: 8;
+  width: var(--logo-w);
+  max-width: 88vw;
+  color: var(--accent);
+  transform: translateX(-50%);
+  transform-origin: center center;
+  transition: transform 0.5s ease-out, opacity 0.5s ease;
+}
+
+.project-logo a {
+  display: block;
+}
+
+.project-logo svg {
+  width: 100%;
+  height: auto;
+  fill: currentColor;
+}
+
+@media (max-width: 959.98px) {
+  .project-logo {
+    width: 60vw;
+  }
+}
+
+/* -------------------------------------------------------- title bar */
+.project-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  display: flex;
+  padding: 0.5rem var(--gutter);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.project-bar__main {
+  display: flex;
+  flex-direction: column;
+  width: 50%;
+  min-width: 0;
+}
+
+.project-bar__client {
+  text-transform: uppercase;
+}
+
+.project-bar__role {
+  width: 50%;
+  margin-left: auto;
+  text-align: right;
+}
+
+@media (min-width: 960px) {
+  .project-bar__main {
+    flex-direction: row;
+    width: 80%;
+  }
+
+  .project-bar__client,
+  .project-bar__title {
+    width: 50%;
+    margin: 0.25rem 0;
+  }
+
+  .project-bar__role {
+    width: 20%;
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* ------------------------------------------------------------ credits */
+.project-credits {
+  padding-bottom: 7rem;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.project-credit {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.project-credit dt {
+  margin-bottom: 0.25rem;
+  padding-left: var(--gutter);
+  text-transform: uppercase;
+}
+
+.project-credit dd {
+  margin: 0;
+  padding-left: var(--gutter);
+}
+
+.project-credit a {
+  border-bottom: 1px solid currentColor;
+  transition: border-color 0.4s ease;
+}
+
+.project-credit a:hover {
+  border-bottom-color: transparent;
+}
+
+.project-credits dl {
+  margin: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+@media (min-width: 960px) {
+  .project-credit {
+    flex-direction: row;
+    padding: 0.5rem 0;
+  }
+
+  .project-credit dt {
+    width: 40%;
+    margin-bottom: 0;
+  }
+
+  .project-credit dd {
+    width: 60%;
+    padding-left: 0;
+    padding-right: var(--gutter);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-waves i {
+    animation: none !important;
+  }
+
+  .project-sound.is-on .project-waves i {
+    transform: scaleY(1);
+  }
+}
