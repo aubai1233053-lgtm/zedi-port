@@ -1,7 +1,7 @@
 /* ==========================================================================
    ART — gallery grid built from content.js and the viewer (lightbox):
    arrows / swipe / dots to move between works, Esc to close.
-   An address such as art.html#soft-machine opens that work directly.
+   An address such as art.html#slow-water opens that work directly.
    ========================================================================== */
 (function () {
   'use strict';
@@ -31,7 +31,11 @@
         src: a.thumb, alt: caption(a), loading: index < 4 ? null : 'lazy', decoding: 'async',
         width: Math.round(a.width), height: Math.round(a.height),
       });
-      var link = h('a', { class: 'art-item__link', href: '#' + encodeURIComponent(a.slug), 'aria-label': 'View ' + caption(a) },
+      // data-tilt: the picture leans towards the pointer; data-cursor-label: the cursor says "View" (both in fx.js)
+      var link = h('a', {
+        class: 'art-item__link', href: '#' + encodeURIComponent(a.slug), 'aria-label': 'View ' + caption(a),
+        'data-tilt': true, 'data-cursor-label': 'View',
+      },
         h('span', { class: 'art-item__image' }, img));
       var view = h('button', { class: 'art-item__view', type: 'button', 'aria-label': 'View ' + a.title }, 'View');
       var el = h('article', { class: 'art-item art-item--' + a.size },

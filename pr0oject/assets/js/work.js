@@ -32,14 +32,16 @@
 
     /* ------------------------------------------------------------ rows */
     var rows = projects.map(function (p) {
+      var client = h('span', { class: 'work-row__client' }, p.client || p.category);
+      var title = h('span', { class: 'work-col work-col--project' }, p.title);
       var link = h('a', { class: 'work-row', href: Z.projectUrl(p) },
         h('span', { class: 'work-col work-col--client' },
-          h('span', { class: 'work-row__client' }, p.client || p.category),
+          client,
           h('span', { class: 'work-row__title' }, p.title)),
-        h('span', { class: 'work-col work-col--project' }, p.title),
+        title,
         h('span', { class: 'work-col work-col--role' }, p.roles.join(', ')));
       var item = h('li', null, link);
-      return { project: p, item: item, link: link };
+      return { project: p, item: item, link: link, words: [client, title] };
     });
 
     var listEl = h('ul', { class: 'work-list' }, rows.map(function (r) { return r.item; }));
@@ -171,24 +173,36 @@
       Z.pause(thumbVideo);
     }
 
-    // Drop the preview somewhere random on screen, never on top of the hovered row.
-    function placeThumb(row) {
-      var vw = window.innerWidth;
-      var vh = window.innerHeight;
+    // The preview trails the pointer: it eases after it and leans into the movement.
+    var thumbAt = { x: 0, y: 0 };
+    var thumbTo = { x: 0, y: 0 };
+    var thumbLean = 0;
+    var thumbFrame = 0;
+
+    // beside and a little below the pointer; it swaps sides near the edges of the screen
+    function aimThumb(e) {
       var w = thumb.offsetWidth;
       var ht = thumb.offsetHeight;
-      var bar = row.link.getBoundingClientRect();
-      var above = bar.top - ht;                  // largest "top" that keeps the preview above the row
-      var below = vh - ht - bar.bottom;          // free travel below the row
-      var top;
-      if (above < 0 && below < 0) top = above > below ? 0 : vh - ht;   // no room: take the roomier side
-      else {
-        var span = Math.max(0, above) + Math.max(0, below);
-        var pick = Math.random() * span;
-        top = pick < Math.max(0, above) ? pick : bar.bottom + (pick - Math.max(0, above));
-      }
-      thumb.style.left = Math.round(Math.random() * Math.max(0, vw - w)) + 'px';
-      thumb.style.top = Math.round(top) + 'px';
+      var x = e.clientX + 28;
+      var y = e.clientY + 24;
+      if (x + w > window.innerWidth - 12) x = e.clientX - 28 - w;
+      if (y + ht > window.innerHeight - 12) y = e.clientY - 24 - ht;
+      thumbTo.x = Math.max(12, x);
+      thumbTo.y = Math.max(12, y);
+      if (!thumbFrame && thumb.classList.contains('is-shown')) thumbFrame = window.requestAnimationFrame(moveThumb);
+    }
+
+    function moveThumb() {
+      thumbFrame = 0;
+      if (!thumb.classList.contains('is-shown')) return;
+      var dx = thumbTo.x - thumbAt.x;
+      var dy = thumbTo.y - thumbAt.y;
+      thumbAt.x += dx * 0.16;
+      thumbAt.y += dy * 0.16;
+      var lean = Z.env.reducedMotion ? 0 : Math.max(-9, Math.min(9, dx * 0.05));
+      thumbLean += (lean - thumbLean) * 0.2;
+      thumb.style.transform = 'translate3d(' + thumbAt.x.toFixed(1) + 'px,' + thumbAt.y.toFixed(1) + 'px,0) rotate(' + thumbLean.toFixed(2) + 'deg)';
+      if (Math.abs(dx) > 0.3 || Math.abs(dy) > 0.3 || Math.abs(thumbLean) > 0.05) thumbFrame = window.requestAnimationFrame(moveThumb);
     }
 
     function showThumb(row) {
@@ -202,14 +216,24 @@
         if (thumbVideo.getAttribute('src') !== p.preview) {
           if (p.preview) thumbVideo.setAttribute('src', p.preview); else thumbVideo.removeAttribute('src');
         }
-        placeThumb(row);
+        thumbAt.x = thumbTo.x;               // appear where it belongs instead of flying in from a corner
+        thumbAt.y = thumbTo.y;
+        thumbLean = 0;
         thumb.classList.add('is-shown');
+        moveThumb();
         Z.play(thumbVideo);
       }, 50);
     }
 
     rows.forEach(function (row) {
-      row.link.addEventListener('mouseenter', function () { hovered = row; hideThumb(); showThumb(row); });
+      row.link.addEventListener('mouseenter', function (e) {
+        hovered = row;
+        hideThumb();
+        aimThumb(e);
+        showThumb(row);
+        if (Z.fx) row.words.forEach(function (el) { Z.fx.scramble(el, { duration: 360 }); });
+      });
+      row.link.addEventListener('mousemove', aimThumb, { passive: true });
       row.link.addEventListener('mouseleave', function () { if (hovered === row) hovered = null; hideThumb(); });
     });
 

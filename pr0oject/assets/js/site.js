@@ -74,6 +74,7 @@
     scrub: [['path', { d: 'M9.5 8.5 5.5 12.5l4 4M15.5 8.5l4 4-4 4', stroke: 1 }]],
     prev: [['path', { d: 'M14.5 6.5 8.5 12.5l6 6', stroke: 1 }]],
     next: [['path', { d: 'M10.5 6.5l6 6-6 6', stroke: 1 }]],
+    light: [['circle', { cx: 12.5, cy: 12.5, r: 7, stroke: 1 }], ['path', { d: 'M12.5 5.5a7 7 0 0 1 0 14Z', fill: 1 }]],
     down: [['path', { d: 'M8.5 10.5l4 4 4-4', stroke: 1 }]],
     expand: [['path', { d: 'M6.5 10.5v-4h4M14.5 6.5h4v4M18.5 14.5v4h-4M10.5 18.5h-4v-4', stroke: 1 }]],
   };
@@ -259,15 +260,38 @@
     leaveHandlers.forEach(function (fn) { try { fn(); } catch (e) { /* keep leaving */ } });
   }
 
-  // Fade the page out, then go. Falls back to a plain jump when motion is reduced.
-  function navigate(url) {
+  // Leave the page: a drop of the accent colour spreads from where the visitor clicked
+  // and covers the screen; the next page lets it shrink back (see boot.js and fx.css).
+  // Falls back to a plain jump when motion is reduced.
+  function navigate(url, origin) {
     if (leaving) return;
     leaving = true;
     setMenu(false);
     rememberPointer();
     runLeave();
     root.classList.add('is-leaving');
-    window.setTimeout(function () { window.location.href = url; }, env.reducedMotion ? 0 : 450);
+    if (!env.reducedMotion) spreadInk(origin);
+    window.setTimeout(function () { window.location.href = url; }, env.reducedMotion ? 0 : 520);
+  }
+
+  function spreadInk(origin) {
+    var from = origin || lastPointer || { x: window.innerWidth / 2, y: window.innerHeight - 46 };
+    var x = Math.round(from.x);
+    var y = Math.round(from.y);
+    var reach = Math.ceil(Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y))) + 4;
+    var ink = h('div', { class: 'z-ink', 'aria-hidden': 'true' });
+    ink.style.setProperty('--ink-x', x + 'px');
+    ink.style.setProperty('--ink-y', y + 'px');
+    ink.style.setProperty('--ink-r', reach + 'px');
+    body.appendChild(ink);
+    void ink.offsetWidth;                       // make sure the starting size is painted first
+    ink.classList.add('is-on');
+    try { window.sessionStorage.setItem('zedi-ink', [Date.now(), x, y].join(',')); } catch (e) { /* the next page simply fades in */ }
+  }
+
+  function centreOf(el) {
+    var b = el.getBoundingClientRect();
+    return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
   }
 
   function interceptLinks() {
@@ -283,7 +307,8 @@
       if (url.protocol !== window.location.protocol || url.host !== window.location.host) return; // mailto:, tel:, other sites
       if (url.pathname === window.location.pathname && url.search === window.location.search) return; // same page (hash only)
       e.preventDefault();
-      navigate(url.href);
+      // a click made with the keyboard has no position: start from the link itself
+      navigate(url.href, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : centreOf(a));
     });
 
     // Coming back with the browser's Back button can restore the faded-out page as it was.
@@ -291,6 +316,8 @@
       if (!e.persisted) return;
       leaving = false;
       root.classList.remove('is-leaving');
+      root.classList.remove('is-arriving');
+      Array.prototype.forEach.call(document.querySelectorAll('.z-ink'), function (el) { el.remove(); });
       root.classList.add('is-ready');
       window.dispatchEvent(new CustomEvent('zedi:restore'));
     });
@@ -298,9 +325,54 @@
     window.addEventListener('pagehide', function () { rememberPointer(); runLeave(); });
   }
 
+  /* -------------------------------------------------------------- theme */
+  // Switch between the day and the night look while the page is open. The new look
+  // opens as a growing circle from "origin" (where the visitor pressed), using the
+  // browser's view transitions where they exist. The choice lasts for the browser tab.
+  var themeBusy = false;
+
+  function applyTheme(night) {
+    root.classList.toggle('is-night', night);
+    env.night = night;
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', night ? '#000000' : '#ffffff');
+    try { window.sessionStorage.setItem('zedi-theme', night ? 'night' : 'day'); } catch (e) { /* lasts for this page only */ }
+    labelThemeButton();
+    window.dispatchEvent(new CustomEvent('zedi:theme', { detail: { night: night } }));
+  }
+
+  function setTheme(night, origin) {
+    night = !!night;
+    if (night === env.night || themeBusy) return;
+    if (env.reducedMotion || typeof document.startViewTransition !== 'function') { applyTheme(night); return; }
+
+    var x = origin && isFinite(origin.x) ? origin.x : window.innerWidth / 2;
+    var y = origin && isFinite(origin.y) ? origin.y : window.innerHeight / 2;
+    var reach = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    var done = function () { themeBusy = false; root.classList.remove('is-theme-switching'); };
+    themeBusy = true;
+    root.classList.add('is-theme-switching');
+    try {
+      var transition = document.startViewTransition(function () { applyTheme(night); });
+      transition.ready.then(function () {
+        root.animate(
+          { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + reach + 'px at ' + x + 'px ' + y + 'px)'] },
+          { duration: 850, easing: 'cubic-bezier(0.65, 0, 0.2, 1)', pseudoElement: '::view-transition-new(root)' });
+      }).catch(function () { /* the look still changes, just without the circle */ });
+      transition.finished.then(done, done);
+    } catch (e) {
+      if (env.night !== night) applyTheme(night);
+      done();
+    }
+  }
+
+  function labelThemeButton() {
+    if (navTheme) navTheme.setAttribute('aria-label', env.night ? 'Switch to the day look' : 'Switch to the night look');
+  }
+
   /* --------------------------------------------------------------- menu */
   var menuOpen = false;
-  var navEl, navMenu, navToggle;
+  var navEl, navMenu, navToggle, navTheme;
 
   function currentFile() {
     var file = window.location.pathname.split('/').pop() || 'index.html';
@@ -321,14 +393,24 @@
       on: { click: function (e) { e.stopPropagation(); setMenu(!menuOpen); } },
     }, h('span', { class: 'z-nav__burger', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')));
 
+    // The visible way to change the look (pressing and holding on empty space is the other one).
+    navTheme = h('button', {
+      class: 'z-nav__theme', type: 'button',
+      on: { click: function (e) { e.stopPropagation(); setTheme(!env.night, centreOf(navTheme)); } },
+    }, icon('light', 25));
+    labelThemeButton();
+
     navMenu = h('nav', { class: 'z-nav__menu', id: 'z-nav-menu', 'aria-label': 'Main' },
       h('ul', { class: 'z-nav__list' }, links),
-      h('button', { class: 'z-nav__close', type: 'button', 'aria-label': 'Close menu', on: { click: function (e) { e.stopPropagation(); setMenu(false); } } }, icon('close', 25)));
+      h('div', { class: 'z-nav__tools' },
+        navTheme,
+        h('button', { class: 'z-nav__close', type: 'button', 'aria-label': 'Close menu', on: { click: function (e) { e.stopPropagation(); setMenu(false); } } }, icon('close', 25))));
 
+    // the button comes before the links so that Tab moves from it straight into the open menu
     navEl = h('div', { class: 'z-nav' },
       h('span', { class: 'z-nav__shape' }),
-      h('div', { class: 'z-nav__clip' }, navMenu),
-      navToggle);
+      navToggle,
+      h('div', { class: 'z-nav__clip' }, navMenu));
 
     // a click on the pill itself (not on a link) closes it, like the reference
     navEl.addEventListener('click', function (e) {
@@ -338,7 +420,11 @@
     var veil = h('div', { class: 'z-veil', 'aria-hidden': 'true', on: { click: function () { setMenu(false); } } });
 
     body.appendChild(veil);
-    body.appendChild(navEl);
+    // Placed right after the "skip" link: keyboard users reach the menu first instead of
+    // last. It is fixed to the screen, so its place in the page makes no visual difference.
+    var main = document.getElementById('main');
+    if (main && main.parentNode === body) body.insertBefore(navEl, main);
+    else body.appendChild(navEl);
 
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && menuOpen) { setMenu(false); navToggle.focus(); }
@@ -459,6 +545,16 @@
       tiltPoint = { x: e.touches[0].clientX, y: e.touches[0].clientY, div: 10 };
       if (!tiltFrame) tiltFrame = window.requestAnimationFrame(applyTilt);
     }, { passive: true });
+  }
+
+  // Hand an element back (the 3D wordmark does its own leaning once it is running).
+  function untilt(el) {
+    for (var i = tilted.length - 1; i >= 0; i--) {
+      if (tilted[i].el === el) {
+        el.style.transform = '';
+        tilted.splice(i, 1);
+      }
+    }
   }
 
   /* --------------------------------------------------------------- idle */
@@ -585,6 +681,12 @@
     icon: icon,
     logo: logo,
     tilt: tilt,
+    untilt: untilt,
+    theme: {
+      isNight: function () { return env.night; },
+      set: setTheme,
+      toggle: function (origin) { setTheme(!env.night, origin); },
+    },
     cursor: cursor,
     idle: idle,
     play: play,
@@ -622,6 +724,7 @@
       revealed = true;
       buildFooter();
       window.requestAnimationFrame(function () { root.classList.add('is-ready'); });
+      window.setTimeout(function () { root.classList.remove('is-arriving'); }, 1500);   // the drop has gone by then
     }
     if (document.readyState === 'complete') reveal();
     else {

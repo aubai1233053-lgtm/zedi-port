@@ -55,6 +55,32 @@ body[data-page='home'] {
   opacity: 1;
 }
 
+.home-tile__inner {
+  display: block;
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* the tile under the pointer steps forward and the others step back */
+@media (hover: hover) and (pointer: fine) {
+  .home-tile:hover .home-tile__inner {
+    transform: scale(1.08);
+  }
+
+  .home-world:has(.home-tile:hover) .home-tile.is-shown:not(:hover) {
+    opacity: 0.35;
+  }
+}
+
+.home-tile:focus-visible .home-tile__inner {
+  transform: scale(1.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-tile__inner {
+    transition: none;
+  }
+}
+
 .home-tile__media {
   display: block;
   width: 100%;

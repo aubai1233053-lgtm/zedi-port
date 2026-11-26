@@ -1,0 +1,217 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>render</title>
+<!-- Renders the ZEDI mark turn frames for assets/js/metal.js (run by tools/render-mark.js).
+     Scene, material, lights and tone mapping follow the mark's original three.js setup:
+     a MeshPhysicalMaterial whose finish depends on whether the text colour is light or dark. -->
+<body style="margin:0;background:transparent">
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js';
+
+const GLB = '__GLB_BASE64__';
+const VIEWS = 9, YAW = 20, PITCH = 8, MARGIN = 0.06, WIDTH = 1800;
+const LOOKS = { day: '#000000', night: '#ffffff' };   // the page's text colour in each look
+
+const bytes = Uint8Array.from(atob(GLB), (c) => c.charCodeAt(0));
+const buf = bytes.buffer;
+const jsonLen = new DataView(buf).getUint32(12, true);
+const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jsonLen)));
+const bin = new Uint8Array(buf, 20 + jsonLen + 8);
+
+function read(i) {
+  const a = gltf.accessors[i], v = gltf.bufferViews[a.bufferView];
+  const comps = a.type === 'SCALAR' ? 1 : a.type === 'VEC2' ? 2 : 3;
+  const size = a.componentType === 5123 ? 2 : 4;
+  const start = (v.byteOffset ?? 0) + (a.byteOffset ?? 0), stride = v.byteStride ?? comps * size;
+  const dv = new DataView(bin.buffer, bin.byteOffset);
+  const out = a.componentType === 5126 ? new Float32Array(a.count * comps) : a.componentType === 5125 ? new Uint32Array(a.count) : new Uint16Array(a.count);
+  for (let k = 0; k < a.count; k++) for (let c = 0; c < comps; c++) {
+    const at = start + k * stride + c * size;
+    out[k * comps + c] = a.componentType === 5126 ? dv.getFloat32(at, true) : a.componentType === 5125 ? dv.getUint32(at, true) : dv.getUint16(at, true);
+  }
+  return out;
+}
+function rot([x, y, z, w], [a, b, c]) {
+  const tx = 2 * (y * c - z * b), ty = 2 * (z * a - x * c), tz = 2 * (x * b - y * a);
+  return [a + w * tx + (y * tz - z * ty), b + w * ty + (z * tx - x * tz), c + w * tz + (x * ty - y * tx)];
+}
+
+// letters, exactly as the original reads them: node transform applied, each centred on itself
+const letters = gltf.nodes.filter((n) => n.mesh !== undefined).map((node) => {
+  const prim = gltf.meshes[node.mesh].primitives[0];
+  const P = read(prim.attributes.POSITION);
+  const N = prim.attributes.NORMAL !== undefined ? read(prim.attributes.NORMAL) : null;
+  const I = read(prim.indices);
+  const q = node.rotation ?? [0, 0, 0, 1], s = node.scale ?? [1, 1, 1], t = node.translation ?? [0, 0, 0];
+  const p = new Float32Array(P.length), n = new Float32Array(P.length);
+  for (let e = 0; e < P.length; e += 3) {
+    const r = rot(q, [P[e] * s[0], P[e + 1] * s[1], P[e + 2] * s[2]]);
+    p[e] = r[0] + t[0]; p[e + 1] = r[1] + t[1]; p[e + 2] = r[2] + t[2];
+    if (N) {
+      const m = rot(q, [N[e] / s[0], N[e + 1] / s[1], N[e + 2] / s[2]]);
+      const l = Math.hypot(m[0], m[1], m[2]) || 1;
+      n[e] = m[0] / l; n[e + 1] = m[1] / l; n[e + 2] = m[2] / l;
+    }
+  }
+  const box = new THREE.Box3().setFromArray(p);
+  const centre = box.getCenter(new THREE.Vector3());
+  for (let e = 0; e < p.length; e += 3) { p[e] -= centre.x; p[e + 1] -= centre.y; p[e + 2] -= centre.z; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  if (N) g.setAttribute('normal', new THREE.BufferAttribute(n, 3)); else g.computeVertexNormals();
+  g.setIndex(new THREE.BufferAttribute(I, 1));
+  return { g, centre };
+});
+const all = new THREE.Box3();
+letters.forEach(({ g, centre }) => { g.computeBoundingBox(); all.union(g.boundingBox.clone().translate(centre)); });
+const middle = all.getCenter(new THREE.Vector3());
+middle.z = 0;
+const ART = { width: all.max.x - all.min.x, height: all.max.y - all.min.y };
+
+const frameW = ART.width * (1 + 2 * MARGIN);
+const frameH = ART.height + 2 * MARGIN * ART.width;
+const height = Math.round(WIDTH * frameH / frameW / 2) * 2;
+
+const canvas = document.createElement('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(WIDTH, height, false);
+renderer.setClearColor(0, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, WIDTH / height, 0.1, 100);
+camera.position.set(0, 0, (frameH / 2) / Math.tan(THREE.MathUtils.degToRad(15)));
+camera.lookAt(0, 0, 0);
+
+const group = new THREE.Group();
+group.rotation.order = 'YXZ';
+scene.add(group);
+const material = new THREE.MeshPhysicalMaterial({
+  color: 0xf7f7f7, roughness: 0.46, metalness: 0.08, clearcoat: 0, clearcoatRoughness: 0.18,
+  sheen: 0, sheenRoughness: 0.32, sheenColor: new THREE.Color('#fffaf6'), side: THREE.DoubleSide,
+});
+letters.forEach(({ g, centre }) => {
+  const holder = new THREE.Group();
+  const mesh = new THREE.Mesh(g, material);
+  mesh.scale.z = 6;
+  holder.add(mesh);
+  holder.position.copy(centre).sub(middle);
+  group.add(holder);
+});
+const ambient = new THREE.AmbientLight(0xffffff, 0.62);
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+const fill = new THREE.DirectionalLight(0xffffff, 0.55);
+const warm = new THREE.DirectionalLight(0xfff1e4, 0);
+scene.add(ambient, key, fill, warm);
+warm.position.set(5, 3, 6);
+
+function look(colour) {
+  material.color.setStyle(colour);
+  const light = 0.2126 * material.color.r + 0.7152 * material.color.g + 0.0722 * material.color.b > 0.62;
+  if (light) material.color.multiplyScalar(0.74);
+  material.roughness = light ? 0.22 : 0.46;
+  material.metalness = light ? 0.16 : 0.08;
+  material.clearcoat = light ? 0.72 : 0;
+  material.sheen = light ? 1 : 0;
+  ambient.intensity = light ? 0.16 : 0.62;
+  key.intensity = light ? 2.05 : 1.4;
+  key.position.set(light ? -5 : -3, light ? 7 : 5, light ? 5 : 8);
+  fill.intensity = light ? 1.25 : 0.55;
+  fill.position.set(light ? 1 : 5, light ? -3 : -1, light ? -6 : 4);
+  warm.intensity = light ? 0.85 : 0;
+  renderer.toneMappingExposure = light ? 0.94 : 1.15;
+}
+
+for (const [name, colour] of Object.entries(LOOKS)) {
+  look(colour);
+  for (let i = 0; i < VIEWS; i++) {
+    group.rotation.x = -THREE.MathUtils.degToRad(PITCH);
+    group.rotation.y = THREE.MathUtils.degToRad(-YAW + (2 * YAW * i) / (VIEWS - 1));
+    renderer.render(scene, camera);
+    const pre = document.createElement('pre');
+    pre.id = name + '-' + i;
+    pre.textContent = canvas.toDataURL('image/webp', 0.9);
+    document.body.appendChild(pre);
+  }
+}
+// ------------------------------------------------------------------ flat outline
+// The mark seen straight on, in one flat colour, traced into polygons: the exact visible shape
+// (the letters overlap, so the outline of what is seen is the reliable one).
+const OW = 2400;
+const pad = 8;
+const oh = Math.ceil(OW * ART.height / ART.width) + 2 * pad;
+const ow = OW + 2 * pad;
+renderer.setSize(ow, oh, false);
+renderer.toneMapping = THREE.NoToneMapping;
+const flat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+group.traverse((o) => { if (o.isMesh) o.material = flat; });
+group.rotation.set(0, 0, 0);
+const ortho = new THREE.OrthographicCamera(-ow / 2, ow / 2, oh / 2, -oh / 2, -1000, 1000);
+ortho.zoom = OW / ART.width;
+ortho.updateProjectionMatrix();
+renderer.render(scene, ortho);
+const gl = renderer.getContext();
+const px = new Uint8Array(ow * oh * 4);
+gl.readPixels(0, 0, ow, oh, gl.RGBA, gl.UNSIGNED_BYTE, px);
+const inside = (x, y) => x >= 0 && y >= 0 && x < ow && y < oh && px[((oh - 1 - y) * ow + x) * 4 + 3] > 127;
+
+// boundary edges between filled and empty pixels, walked into closed loops (even-odd fill)
+const out = new Map();
+const add = (ax, ay, bx, by) => {
+  const k = ax + ',' + ay;
+  if (!out.has(k)) out.set(k, []);
+  out.get(k).push([bx, by]);
+};
+for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+  if (!inside(x, y)) continue;
+  if (!inside(x, y - 1)) add(x, y, x + 1, y);
+  if (!inside(x + 1, y)) add(x + 1, y, x + 1, y + 1);
+  if (!inside(x, y + 1)) add(x + 1, y + 1, x, y + 1);
+  if (!inside(x - 1, y)) add(x, y + 1, x, y);
+}
+function simplify(pts, tol) {        // Douglas-Peucker on an open run of points
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+  let far = 0, at = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / len;
+    if (d > far) { far = d; at = i; }
+  }
+  if (far <= tol) return [a, b];
+  return simplify(pts.slice(0, at + 1), tol).slice(0, -1).concat(simplify(pts.slice(at), tol));
+}
+const loops = [];
+for (const start of out.keys()) {
+  while (out.get(start).length) {
+    const loop = [];
+    let k = start;
+    while (out.has(k) && out.get(k).length) {
+      const [x, y] = k.split(',').map(Number);
+      loop.push([x, y]);
+      const [nx, ny] = out.get(k).pop();
+      k = nx + ',' + ny;
+      if (k === start) break;
+    }
+    if (loop.length > 6) {
+      const half = Math.floor(loop.length / 2);
+      const run = simplify(loop.slice(0, half + 1), 0.9).slice(0, -1).concat(simplify(loop.slice(half).concat([loop[0]]), 0.9).slice(0, -1));
+      loops.push(run);
+    }
+  }
+}
+// to SVG units: 1000 wide, a 4 unit border
+const S = 1000 / OW;
+const P = 4;
+const vbW = 1000 + 2 * P, vbH = +((oh - 2 * pad) * S + 2 * P).toFixed(1);
+const fx = (v) => +((v - pad) * S + P).toFixed(1);
+const svgLoops = loops.map((l) => l.map(([x, y]) => [fx(x), fx(y)]));
+const pre = document.createElement('pre');
+pre.id = 'outline';
+pre.textContent = JSON.stringify({ width: vbW, height: vbH, loops: svgLoops });
+document.body.appendChild(pre);
+
+document.title = 'done ' + WIDTH + 'x' + height;
+</script>

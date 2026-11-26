@@ -63,6 +63,19 @@
   var fine = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   root.classList.toggle('is-touch', !fine);
 
+  // Arriving from another page of the site: that page covered the screen with a drop of
+  // the accent colour. Start covered too, so the drop can shrink back to where it began.
+  try {
+    var ink = (window.sessionStorage.getItem('zedi-ink') || '').split(',');
+    window.sessionStorage.removeItem('zedi-ink');
+    var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (ink.length === 3 && Date.now() - ink[0] < 8000 && !calm) {
+      root.style.setProperty('--ink-x', (+ink[1] || 0) + 'px');
+      root.style.setProperty('--ink-y', (+ink[2] || 0) + 'px');
+      root.classList.add('is-arriving');
+    }
+  } catch (e) { /* no storage: the page simply fades in */ }
+
   // Safety net: if the main script fails to load, still reveal the page.
   window.setTimeout(function () { root.classList.add('is-ready'); }, 3000);
 

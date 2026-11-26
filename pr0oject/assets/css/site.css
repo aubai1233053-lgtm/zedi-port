@@ -321,7 +321,7 @@ noscript .z-noscript a {
 
 @media (max-width: 959.98px) {
   .z-logo {
-    width: 88vw;
+    width: 74vw;                     /* the gothic wordmark is tall: keep it clear of the page title */
   }
 }
 
@@ -411,6 +411,7 @@ noscript .z-noscript a {
   position: absolute;
   top: 0;
   right: 0;
+  z-index: 1;                        /* stays above the links' clip box, which follows it in the page */
   width: 100%;
   height: 100%;
   display: flex;

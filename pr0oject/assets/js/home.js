@@ -115,10 +115,11 @@
 
       var label = h('span', { class: 'home-tile__label' });
       var mediaBox = h('span', { class: 'home-tile__media' }, media);
+      // the inner wrapper is what grows a little under the pointer; the link itself keeps its place in the scene
       var el = h('a', {
         class: 'home-tile', href: isFilm ? Z.projectUrl(item) : Z.artUrl(item),
-        draggable: 'false', 'aria-label': name,
-      }, mediaBox, label);
+        draggable: 'false', 'aria-label': name, 'data-cursor-label': isFilm ? 'Play' : 'View',
+      }, h('span', { class: 'home-tile__inner' }, mediaBox, label));
 
       var tile = {
         el: el, media: media, mediaBox: mediaBox, label: label, item: item, isFilm: isFilm, text: text,
@@ -136,6 +137,7 @@
       if (!isFilm && media.complete) show();
 
       el.addEventListener('focus', function () { lookAt(tile); });
+      el.addEventListener('mouseenter', function () { if (Z.fx) Z.fx.scramble(label, { duration: 380 }); });
       return tile;
     });
 
@@ -223,15 +225,34 @@
     /* --------------------------------------------------------- camera */
     var target = { x: 0, y: 0 };   // where the camera wants to look (radians: x = up/down, y = left/right)
     var rot = { x: 0, y: 0 };      // where it looks now
+    var steer = { x: 0, y: 0 };    // where the visitor last pointed it
+    var zoom = 0;                  // 0 = normal distance, 1 = pushed in close to the tiles
+    var zoomTo = 0;
     var frame = 0;
     var last = 0;
     var running = true;
+    var REST_MS = 2600;            // left alone this long, the camera starts to wander by itself
+    var restSince = window.performance.now();
+    var restTimer = 0;
 
     function clamp(v, max) { return Math.max(-max, Math.min(max, v)); }
 
     function apply() {
-      world.style.transform = 'translateZ(' + P.toFixed(2) + 'px) rotateY(' + (-rot.y).toFixed(5) + 'rad) rotateX(' + rot.x.toFixed(5) + 'rad)';
+      world.style.transform = 'translateZ(' + (P + zoom * 4.2 * U).toFixed(2) + 'px) rotateY(' + (-rot.y).toFixed(5) + 'rad) rotateX(' + rot.x.toFixed(5) + 'rad)';
       loose.style.transform = 'translate3d(' + (DRIFT * rot.y * U).toFixed(2) + 'px,' + (-DRIFT * rot.x * U).toFixed(2) + 'px,0)';
+    }
+
+    // Nobody is steering: let the camera drift slowly so the tiles keep floating
+    // (this is also what brings the page to life on phones, where there is no pointer).
+    function wandering(now) {
+      return !Z.env.reducedMotion && !Z.isMenuOpen() && !document.hidden &&
+        now - restSince > REST_MS && !world.contains(document.activeElement);
+    }
+
+    function rested() {
+      restSince = window.performance.now();
+      window.clearTimeout(restTimer);
+      restTimer = window.setTimeout(wake, REST_MS + 60);
     }
 
     function tick(now) {
@@ -240,11 +261,19 @@
       var dt = last ? Math.min(64, now - last) : 16.667;
       last = now;
       var k = 1 - Math.pow(1 - EASE, dt / 16.667);
+      var floating = wandering(now);
+      if (floating) {
+        var t = (now - restSince - REST_MS) / 1000;        // starts at 0, so the drift begins without a jump
+        target.x = clamp(steer.x + Math.sin(t * 0.23) * 0.11, Math.PI * 0.08);
+        target.y = clamp(steer.y + Math.sin(t * 0.14) * 0.27, Math.PI * (mobile ? 0.23 : 0.13));
+      }
       rot.x += (target.x - rot.x) * k;
       rot.y += (target.y - rot.y) * k;
-      if (Math.abs(target.x - rot.x) < 0.00005 && Math.abs(target.y - rot.y) < 0.00005) {
+      zoom += (zoomTo - zoom) * Math.min(1, k * 2.5);
+      if (!floating && Math.abs(target.x - rot.x) < 0.00005 && Math.abs(target.y - rot.y) < 0.00005 && Math.abs(zoomTo - zoom) < 0.0005) {
         rot.x = target.x;
         rot.y = target.y;
+        zoom = zoomTo;
         apply();
         last = 0;
         return;                                  // settled: sleep until the next input
@@ -262,8 +291,9 @@
       if (Z.env.reducedMotion || Z.isMenuOpen()) return;
       var maxV = Math.PI * (byTouch ? 0.06 : 0.08);
       var maxH = Math.PI * (byTouch ? 0.23 : 0.13);
-      target.x = clamp(ny * 2 * maxV, maxV);
-      target.y = clamp(nx * 2 * maxH, maxH);
+      steer.x = target.x = clamp(ny * 2 * maxV, maxV);
+      steer.y = target.y = clamp(nx * 2 * maxH, maxH);
+      rested();
       wake();
     }
 
@@ -271,11 +301,22 @@
     function lookAt(tile) {
       var maxV = Math.PI * 0.08;
       var maxH = Math.PI * (mobile ? 0.23 : 0.13);
-      target.x = clamp(Math.atan2(tile.y, DEPTH), maxV);
-      target.y = clamp(-Math.atan2(tile.x, DEPTH), maxH);
+      steer.x = target.x = clamp(Math.atan2(tile.y, DEPTH), maxV);
+      steer.y = target.y = clamp(-Math.atan2(tile.x, DEPTH), maxH);
       if (Z.env.reducedMotion) { rot.x = target.x; rot.y = target.y; apply(); return; }
+      rested();
       wake();
     }
+
+    // The wheel pushes the camera in towards the tiles and pulls it back out.
+    window.addEventListener('wheel', function (e) {
+      if (Z.env.reducedMotion || Z.isMenuOpen() || e.ctrlKey) return;
+      zoomTo = Math.max(0, Math.min(1, zoomTo + e.deltaY * 0.0014));
+      wake();
+    }, { passive: true });
+
+    window.addEventListener('zedi:menu', function (e) { if (!e.detail || !e.detail.open) rested(); });
+    rested();
 
     window.addEventListener('mousemove', function (e) {
       aim(0.5 - e.clientX / window.innerWidth, 0.5 - e.clientY / window.innerHeight, false);
@@ -319,7 +360,8 @@
     function resumeVisible() { tiles.forEach(function (tile) { if (tile.isFilm && tile.visible) Z.play(tile.media); }); }
 
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden) pauseAll(); else resumeVisible();
+      if (document.hidden) pauseAll();
+      else { resumeVisible(); rested(); }
     });
 
     Z.onLeave(function () { running = false; pauseAll(); });

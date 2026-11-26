@@ -11,6 +11,7 @@ body[data-page='project'] .z-nav {
 
 .is-past-stage body[data-page='project'] .z-nav,
 .is-menu-open body[data-page='project'] .z-nav,
+body[data-page='project'] .z-nav:has(:focus-visible),   /* reached with the keyboard */
 body[data-page='project'].is-missing .z-nav {
   opacity: 1;
   pointer-events: auto;
@@ -285,6 +286,16 @@ body[data-page='project'].is-missing .z-nav {
 @media (max-width: 959.98px) {
   .project-logo {
     width: 60vw;
+  }
+}
+
+/* phones: a centred logo would run under the two round buttons, so it is
+   centred in the space that is left beside them instead */
+@media (max-width: 639.98px) {
+  .project-logo {
+    --project-free: calc(100vw - var(--gutter) - 5.2rem - 44px - 0.8rem);
+    left: calc(var(--gutter) + var(--project-free) / 2);
+    width: min(60vw, var(--project-free));
   }
 }
 

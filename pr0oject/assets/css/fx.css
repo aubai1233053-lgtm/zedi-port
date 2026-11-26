@@ -1,0 +1,370 @@
+/* ==========================================================================
+   ZEDI — the playful layer (see fx.js and metal.js)
+   Press-and-hold to change the look, the drop of colour between pages, the
+   3D wordmark canvas, cursor label and trail, film grain, text that rises in.
+   Everything here is decoration: the site works the same without it, and
+   most of it is switched off for visitors who ask for reduced motion.
+   ========================================================================== */
+
+/* --------------------------------------------- day / night: growing circle */
+/* fx.js animates the new look as a circle; these switch off the browser's own cross-fade */
+html.is-theme-switching::view-transition-old(root),
+html.is-theme-switching::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* the half-filled circle in the menu: the visible way to change the look */
+.z-nav__tools {
+  display: flex;
+  align-items: center;
+  margin-left: 1.4rem;
+}
+
+.z-nav__theme {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease, transform 0.5s var(--ease-pill);
+}
+
+.z-nav__theme:hover {
+  opacity: 0.5;
+}
+
+.is-night .z-nav__theme {
+  transform: rotate(180deg);
+}
+
+.z-nav__theme svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 959.98px) {
+  .z-nav__tools {
+    gap: 0.8rem;
+    margin: 1rem 0 0;
+  }
+
+  .z-nav__theme,
+  .z-nav .z-nav__close {
+    width: 46px;
+    height: 46px;
+    margin-top: 0;
+    border: 1px solid #989ca6;
+    border-radius: 50%;
+  }
+}
+
+/* ------------------------------------------------- hold ring at the pointer */
+.z-hold {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  pointer-events: none;
+  mix-blend-mode: exclusion;         /* white ring that inverts whatever is under it, like the cursor */
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  will-change: transform;
+}
+
+.z-hold svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg) scale(0.55);
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.3s ease;
+}
+
+.z-hold circle {
+  fill: none;
+  stroke: #fff;
+}
+
+.z-hold__track {
+  stroke-width: 1;
+  opacity: 0.4;
+}
+
+.z-hold__fill {
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 125.7;
+  stroke-dashoffset: 125.7;
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.z-hold.is-on {
+  opacity: 1;
+}
+
+.z-hold.is-on svg {
+  transform: rotate(-90deg) scale(1);
+}
+
+.z-hold.is-on .z-hold__fill {
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset var(--hold-ms, 700ms) linear;
+}
+
+.z-hold.is-done {
+  opacity: 0;
+  transition: opacity 0.45s ease-out;
+}
+
+.z-hold.is-done svg {
+  transform: rotate(-90deg) scale(2.1);
+  transition: transform 0.45s ease-out;
+}
+
+.z-hold.is-done .z-hold__fill {
+  stroke-dashoffset: 0;
+  transition: none;
+}
+
+/* the cursor dot tightens while the ring fills */
+.z-cursor.is-holding .z-cursor__dot {
+  transform: scale(0.45);
+}
+
+html.is-holding,
+html.is-holding * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none;
+}
+
+/* one-time hint about the gesture */
+.z-hint {
+  position: fixed;
+  left: var(--gutter);
+  bottom: 1.5rem;
+  z-index: 9990;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  height: 48px;
+  padding: 0 1.2rem 0 1rem;
+  border-radius: 50px;
+  background: var(--fg);
+  color: var(--bg);
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.z-hint.is-on {
+  opacity: 1;
+  transform: none;
+}
+
+.z-hint i {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  border-right-color: transparent;
+  animation: z-hint-turn 1.6s linear infinite;
+}
+
+@keyframes z-hint-turn {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 959.98px) {
+  .z-hint {
+    left: 50%;
+    bottom: 5.8rem;
+    transform: translate(-50%, 12px);
+  }
+
+  .z-hint.is-on {
+    transform: translate(-50%, 0);
+  }
+}
+
+/* --------------------------------------------------- drop between pages */
+.z-ink {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--accent);
+  pointer-events: none;
+  clip-path: circle(0px at var(--ink-x) var(--ink-y));
+  transition: clip-path 0.5s cubic-bezier(0.7, 0, 0.3, 1);
+}
+
+.z-ink.is-on {
+  clip-path: circle(var(--ink-r) at var(--ink-x) var(--ink-y));
+}
+
+/* the next page starts covered (boot.js) and lets the drop shrink back */
+html.is-arriving::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+html.is-arriving.is-ready::after {
+  animation: z-ink-out 0.75s cubic-bezier(0.7, 0, 0.2, 1) 0.05s both;
+}
+
+@keyframes z-ink-out {
+  from { clip-path: circle(150vmax at var(--ink-x, 50%) var(--ink-y, 100%)); }
+  to { clip-path: circle(0px at var(--ink-x, 50%) var(--ink-y, 100%)); }
+}
+
+/* ------------------------------------------------------ the 3D wordmark */
+.z-metal {
+  position: fixed;
+  inset: 0;
+  z-index: 10;                       /* above the menu veil, below the menu itself and any dialog */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* the flat logo stays in the page as the link and as the fallback; it only steps aside */
+.is-metal svg {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+/* ------------------------------------------------- cursor label and trail */
+.z-trail {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: none;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.z-cursorlabel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10000;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.z-cursorlabel span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68px;
+  height: 68px;
+  margin: -34px 0 0 -34px;
+  border-radius: 50%;
+  background: var(--fg);
+  color: var(--bg);
+  text-transform: uppercase;
+  transform: scale(0);
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.z-cursorlabel.is-on span {
+  transform: scale(1);
+}
+
+/* the menu button leans towards a nearby pointer (fx.js sets the two distances) */
+@media (hover: hover) and (pointer: fine) {
+  .z-nav {
+    transform: translateX(-50%) translate(var(--mag-x, 0px), var(--mag-y, 0px));
+    transition: width 0.6s var(--ease-pill) 0.2s, height 0.6s var(--ease-pill) 0.2s, opacity 0.4s ease, transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+}
+
+/* ------------------------------------------------------------------ grain */
+.z-grain {
+  position: fixed;
+  inset: -100px;                     /* larger than the screen so it can jitter without showing an edge */
+  z-index: 9990;
+  pointer-events: none;
+  opacity: 0.03;
+  background-repeat: repeat;
+  animation: z-grain 0.9s steps(1) infinite;
+}
+
+.is-night .z-grain {
+  opacity: 0.045;
+}
+
+@keyframes z-grain {
+  0% { transform: translate(0, 0); }
+  12% { transform: translate(-37px, 21px); }
+  25% { transform: translate(18px, -44px); }
+  37% { transform: translate(-61px, -13px); }
+  50% { transform: translate(42px, 33px); }
+  62% { transform: translate(-9px, -70px); }
+  75% { transform: translate(55px, 8px); }
+  87% { transform: translate(-28px, 49px); }
+}
+
+/* ------------------------------------------------------ rise in on scroll */
+.fx-rise {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s ease, transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: calc(var(--i, 0) * 45ms);
+}
+
+.fx-rise.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ----------------------------------------------- artworks lean to the pointer */
+@media (hover: hover) and (pointer: fine) {
+  .art-item__image {
+    perspective: 900px;
+  }
+
+  .art-item__image img {
+    transform: rotateX(calc(var(--ty, 0) * -8deg)) rotateY(calc(var(--tx, 0) * 10deg));
+    transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), filter 0.6s ease, opacity 0.2s ease;
+  }
+
+  [data-tilt].is-tilting .art-item__image img {
+    transform: rotateX(calc(var(--ty, 0) * -8deg)) rotateY(calc(var(--tx, 0) * 10deg)) scale(1.05);
+    filter: drop-shadow(calc(var(--tx, 0) * -22px) calc(20px + var(--ty, 0) * -14px) 22px rgba(0, 0, 0, 0.28));
+    transition-duration: 0.15s, 0.4s, 0.2s;
+  }
+}
+
+/* ------------------------------------------------------- reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .z-grain,
+  .z-hint i {
+    animation: none;
+  }
+
+  .fx-rise {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .z-nav {
+    transform: translateX(-50%);
+  }
+}
+
+/* the hint steps aside while the menu is open */
+.is-menu-open .z-hint {
+  opacity: 0;
+}
